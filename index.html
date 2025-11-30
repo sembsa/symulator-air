@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symulator Przepływu Powietrza 2D</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Symulator Przepływu Powietrza 2D</h1>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <h3>Przepływ powietrza</h3>
+                <label>
+                    Prędkość wiatru: <span id="windSpeedValue">5</span>
+                    <input type="range" id="windSpeed" min="0" max="20" value="5" step="0.5">
+                </label>
+                <label>
+                    Turbulencja: <span id="turbulenceValue">0.5</span>
+                    <input type="range" id="turbulence" min="0" max="2" value="0.5" step="0.1">
+                </label>
+                <label>
+                    <input type="checkbox" id="showVectors" checked>
+                    Pokaż wektory przepływu
+                </label>
+            </div>
+
+            <div class="control-group">
+                <h3>Dodaj kształt</h3>
+                <div class="shape-buttons">
+                    <button id="addCircle">Koło</button>
+                    <button id="addRectangle">Prostokąt</button>
+                    <button id="addTriangle">Trójkąt</button>
+                    <button id="clearShapes">Wyczyść wszystko</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Kontrola</h3>
+                <button id="pausePlay">Pauza</button>
+                <button id="reset">Reset</button>
+            </div>
+
+            <div class="info">
+                <p><strong>Instrukcja:</strong></p>
+                <ul>
+                    <li>Kliknij przyciski aby dodać kształty</li>
+                    <li>Przeciągnij kształty myszką aby je przesunąć</li>
+                    <li>Obserwuj jak powietrze opływa przeszkody</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="airflowCanvas"></canvas>
+        </div>
+    </div>
+
+    <script src="simulator.js"></script>
+</body>
+</html>

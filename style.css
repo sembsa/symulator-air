@@ -1,0 +1,147 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #333;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+header {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+    padding: 25px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2em;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.controls {
+    padding: 20px;
+    background: #f8f9fa;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.control-group {
+    margin-bottom: 20px;
+}
+
+.control-group h3 {
+    color: #4facfe;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+label {
+    display: block;
+    margin: 10px 0;
+    font-weight: 500;
+}
+
+input[type="range"] {
+    width: 200px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+input[type="checkbox"] {
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.shape-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+#clearShapes {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+#pausePlay, #reset {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.info {
+    margin-top: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #4facfe;
+}
+
+.info p {
+    margin-bottom: 8px;
+    color: #4facfe;
+    font-weight: 600;
+}
+
+.info ul {
+    margin-left: 20px;
+    color: #666;
+}
+
+.info li {
+    margin: 5px 0;
+}
+
+.canvas-container {
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    background: #1a1a2e;
+}
+
+#airflowCanvas {
+    border: 3px solid #4facfe;
+    border-radius: 8px;
+    background: #0f0f1e;
+    cursor: crosshair;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+span[id$="Value"] {
+    display: inline-block;
+    min-width: 30px;
+    font-weight: bold;
+    color: #667eea;
+}
