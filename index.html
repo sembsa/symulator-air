@@ -3,60 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Symulator Przepływu Powietrza 2D</title>
+    <title>Tunel Aerodynamiczny 2D</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Symulator Przepływu Powietrza 2D</h1>
+            <h1>🌬️ Tunel Aerodynamiczny 2D</h1>
+            <p class="subtitle">Symulator przepływu powietrza z edytorem kształtów i importem SVG</p>
         </header>
 
-        <div class="controls">
-            <div class="control-group">
-                <h3>Przepływ powietrza</h3>
-                <label>
-                    Prędkość wiatru: <span id="windSpeedValue">5</span>
-                    <input type="range" id="windSpeed" min="0" max="20" value="5" step="0.5">
-                </label>
-                <label>
-                    Turbulencja: <span id="turbulenceValue">0.5</span>
-                    <input type="range" id="turbulence" min="0" max="2" value="0.5" step="0.1">
-                </label>
-                <label>
-                    <input type="checkbox" id="showVectors" checked>
-                    Pokaż wektory przepływu
-                </label>
-            </div>
+        <div class="main-layout">
+            <!-- Lewa kolumna - kontrolki -->
+            <div class="sidebar">
+                <div class="control-group">
+                    <h3>⚙️ Parametry tunelu</h3>
+                    <label>
+                        Prędkość przepływu: <span id="windSpeedValue">8</span> m/s
+                        <input type="range" id="windSpeed" min="1" max="30" value="8" step="0.5">
+                    </label>
+                    <label>
+                        Gęstość cząsteczek: <span id="particleDensityValue">30</span>
+                        <input type="range" id="particleDensity" min="10" max="100" value="30" step="5">
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showVectors">
+                        Pokaż pole wektorowe
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showPressure" checked>
+                        Pokaż ciśnienie (kolor)
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showGrid">
+                        Pokaż siatkę
+                    </label>
+                </div>
 
-            <div class="control-group">
-                <h3>Dodaj kształt</h3>
-                <div class="shape-buttons">
-                    <button id="addCircle">Koło</button>
-                    <button id="addRectangle">Prostokąt</button>
-                    <button id="addTriangle">Trójkąt</button>
-                    <button id="clearShapes">Wyczyść wszystko</button>
+                <div class="control-group">
+                    <h3>📐 Kształty predefiniowane</h3>
+                    <div class="shape-buttons">
+                        <button id="addCircle">⚫ Koło</button>
+                        <button id="addRectangle">⬜ Prostokąt</button>
+                        <button id="addAirfoil">✈️ Profil lotniczy</button>
+                        <button id="addTriangle">🔺 Trójkąt</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>✏️ Edytor kształtów</h3>
+                    <button id="startDrawing" class="editor-btn">Rysuj własny kształt</button>
+                    <button id="finishShape" class="editor-btn" disabled>Zakończ kształt</button>
+                    <button id="cancelDrawing" class="editor-btn" disabled>Anuluj</button>
+                    <div class="editor-info">
+                        <small>Kliknij na canvas aby dodać punkty. Min. 3 punkty.</small>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>📁 Import/Export</h3>
+                    <label class="file-upload">
+                        <input type="file" id="svgImport" accept=".svg">
+                        📤 Importuj SVG
+                    </label>
+                    <button id="exportShape">💾 Eksportuj kształt</button>
+                    <button id="clearShapes">🗑️ Usuń kształt</button>
+                </div>
+
+                <div class="control-group">
+                    <h3>🎮 Kontrola</h3>
+                    <button id="pausePlay">⏸️ Pauza</button>
+                    <button id="reset">🔄 Reset</button>
+                </div>
+
+                <div class="stats">
+                    <h3>📊 Metryki</h3>
+                    <div class="stat-item">
+                        <span>Cząsteczek:</span>
+                        <span id="particleCount">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>FPS:</span>
+                        <span id="fpsCounter">60</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Opór (Cd):</span>
+                        <span id="dragCoeff">0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Siła nośna (Cl):</span>
+                        <span id="liftCoeff">0.00</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="control-group">
-                <h3>Kontrola</h3>
-                <button id="pausePlay">Pauza</button>
-                <button id="reset">Reset</button>
+            <!-- Główny canvas -->
+            <div class="canvas-wrapper">
+                <div class="canvas-header">
+                    <h3>Wizualizacja przepływu</h3>
+                    <div class="legend">
+                        <span class="legend-item">
+                            <span class="color-box" style="background: #00f2fe;"></span>
+                            Niskie ciśnienie
+                        </span>
+                        <span class="legend-item">
+                            <span class="color-box" style="background: #f5576c;"></span>
+                            Wysokie ciśnienie
+                        </span>
+                    </div>
+                </div>
+                <canvas id="airflowCanvas"></canvas>
+                <div class="canvas-info">
+                    <small id="drawingMode" style="display: none;">
+                        🎨 TRYB RYSOWANIA: Kliknij aby dodać punkty, kliknij "Zakończ kształt" aby zapisać
+                    </small>
+                </div>
             </div>
-
-            <div class="info">
-                <p><strong>Instrukcja:</strong></p>
-                <ul>
-                    <li>Kliknij przyciski aby dodać kształty</li>
-                    <li>Przeciągnij kształty myszką aby je przesunąć</li>
-                    <li>Obserwuj jak powietrze opływa przeszkody</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="canvas-container">
-            <canvas id="airflowCanvas"></canvas>
         </div>
     </div>
 
