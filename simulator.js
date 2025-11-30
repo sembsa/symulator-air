@@ -382,47 +382,7 @@ class WindTunnel {
                 const particle = stream.particles[i];
                 particle.age++;
 
-                // NAJPIERW sprawdź czy cząsteczka jest w kształcie (PRZED pobraniem prędkości)
-                let isInside = this.shape && this.isPointInShape(particle.x, particle.y);
-
-                if (isInside) {
-                    // FAILSAFE: Cząsteczka w kształcie - natychmiast wypchnij BEZ modyfikacji prędkości
-                    const closest = this.getClosestPointOnShape(particle.x, particle.y);
-                    const dx = particle.x - closest.x;
-                    const dy = particle.y - closest.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist > 0.1) {
-                        const nx = dx / dist;
-                        const ny = dy / dist;
-
-                        // Wypchnij na zewnątrz
-                        particle.x = closest.x + nx * 12;
-                        particle.y = closest.y + ny * 12;
-
-                        // Odbij prędkość tylko jeśli leci w stronę kształtu
-                        const dot = particle.vx * nx + particle.vy * ny;
-                        if (dot < 0) {
-                            particle.vx -= 2 * dot * nx * 0.6;
-                            particle.vy -= 2 * dot * ny * 0.6;
-                        }
-                    } else {
-                        // Dist bardzo małe - wypchnij po prostu na zewnątrz
-                        particle.x = closest.x + 15;
-                    }
-
-                    // Zapisz pozycję do śladu
-                    if (particle.age % 1 === 0) {
-                        particle.trail.push({ x: particle.x, y: particle.y });
-                        if (particle.trail.length > particle.maxTrailLength) {
-                            particle.trail.shift();
-                        }
-                    }
-
-                    continue; // Pomiń resztę - nie aktualizuj prędkości z flow field
-                }
-
-                // Cząsteczka POZA kształtem - normalnie pobierz przepływ z siatki
+                // Pobierz przepływ z siatki (interpolacja biliniarna)
                 const gridX = particle.x / this.gridSize;
                 const gridY = particle.y / this.gridSize;
                 const gx = Math.floor(gridX);
@@ -467,9 +427,41 @@ class WindTunnel {
                     }
                 }
 
-                // Aktualizuj pozycję
-                particle.x += particle.vx * 0.5;
-                particle.y += particle.vy * 0.5;
+                // PREDICTIVE COLLISION - sprawdź PRZYSZŁĄ pozycję przed jej zastosowaniem
+                const newX = particle.x + particle.vx * 0.5;
+                const newY = particle.y + particle.vy * 0.5;
+
+                // Jeśli nowa pozycja byłaby WEWNĄTRZ kształtu - ODBIJ
+                if (this.shape && this.isPointInShape(newX, newY)) {
+                    // Znajdź najbliższy punkt na krawędzi kształtu
+                    const closest = this.getClosestPointOnShape(newX, newY);
+                    const dx = newX - closest.x;
+                    const dy = newY - closest.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 0.1) {
+                        // Normalna do powierzchni (kierunek od kształtu)
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+
+                        // Odbij wektor prędkości
+                        const dot = particle.vx * nx + particle.vy * ny;
+                        particle.vx -= 2 * dot * nx * 0.7; // damping 0.7
+                        particle.vy -= 2 * dot * ny * 0.7;
+
+                        // Ustaw cząsteczkę PRZY krawędzi (nie ruszaj w stronę kształtu)
+                        particle.x = closest.x + nx * 3;
+                        particle.y = closest.y + ny * 3;
+                    } else {
+                        // Bardzo blisko - po prostu odbij
+                        particle.vx = -particle.vx * 0.5;
+                        particle.vy = -particle.vy * 0.5;
+                    }
+                } else {
+                    // Brak kolizji - normalna aktualizacja pozycji
+                    particle.x = newX;
+                    particle.y = newY;
+                }
 
                 // Usuń cząsteczki poza ekranem
                 if (particle.x > this.canvas.width + 50 ||
