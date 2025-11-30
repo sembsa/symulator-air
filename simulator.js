@@ -1,5 +1,6 @@
 // ==========================================
-// TUNEL AERODYNAMICZNY 2D - Ulepszona fizyka
+// TUNEL AERODYNAMICZNY 2D - Poprawiona fizyka CFD
+// Bazowane na Lattice Boltzmann i NASA streamlines
 // ==========================================
 
 class WindTunnel {
@@ -36,13 +37,9 @@ class WindTunnel {
         this.drawingPoints = [];
         this.tempPoint = null;
 
-        // Siatka przepływu - GĘSTSZA dla lepszej symulacji
-        this.gridSize = 20;
+        // Siatka przepływu - gęsta dla dokładności
+        this.gridSize = 15;
         this.flowField = [];
-
-        // Zawirowania (vortices)
-        this.vortices = [];
-        this.maxVortices = 50;
 
         // Metryki
         this.dragForce = 0;
@@ -79,8 +76,7 @@ class WindTunnel {
                 this.flowField[y][x] = {
                     vx: this.windSpeed,
                     vy: 0,
-                    pressure: 1.0,
-                    vorticity: 0
+                    pressure: 1.0
                 };
             }
         }
@@ -108,11 +104,11 @@ class WindTunnel {
     createParticle(y) {
         return {
             x: -10,
-            y: y + (Math.random() - 0.5) * 5,
+            y: y + (Math.random() - 0.5) * 3,
             vx: this.windSpeed,
             vy: 0,
             trail: [],
-            maxTrailLength: 25,
+            maxTrailLength: 30,
             life: 255,
             age: 0
         };
@@ -128,8 +124,7 @@ class WindTunnel {
                 this.flowField[y][x] = {
                     vx: this.windSpeed,
                     vy: 0,
-                    pressure: 1.0,
-                    vorticity: 0
+                    pressure: 1.0
                 };
             }
         }
@@ -139,21 +134,24 @@ class WindTunnel {
             this.calculateFlowAroundShape();
         }
 
-        // Wpływ zawirowan
-        this.applyVortices();
-
-        // Smoothing - rozproś pole przepływu dla płynności
-        this.smoothFlowField();
+        // Multi-pass smoothing dla płynności
+        for (let pass = 0; pass < 2; pass++) {
+            this.smoothFlowField();
+        }
     }
 
     calculateFlowAroundShape() {
         const cols = Math.ceil(this.canvas.width / this.gridSize);
         const rows = Math.ceil(this.canvas.height / this.gridSize);
 
-        // Oblicz środek kształtu
+        // Oblicz środek i rozmiar kształtu
         const shapeBounds = this.getShapeBounds();
         const shapeCenterX = (shapeBounds.minX + shapeBounds.maxX) / 2;
         const shapeCenterY = (shapeBounds.minY + shapeBounds.maxY) / 2;
+        const shapeRadius = Math.max(
+            shapeBounds.maxX - shapeBounds.minX,
+            shapeBounds.maxY - shapeBounds.minY
+        ) / 2;
 
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
@@ -162,10 +160,10 @@ class WindTunnel {
 
                 // Sprawdź czy punkt jest wewnątrz kształtu
                 if (this.isPointInShape(px, py)) {
-                    // Wewnątrz kształtu - brak przepływu
+                    // Wewnątrz kształtu - brak przepływu (solid boundary)
                     this.flowField[y][x].vx = 0;
                     this.flowField[y][x].vy = 0;
-                    this.flowField[y][x].pressure = 2.0;
+                    this.flowField[y][x].pressure = 1.5;
                     continue;
                 }
 
@@ -175,52 +173,72 @@ class WindTunnel {
                 const dy = py - closestPoint.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
-                // Szerszy wpływ
-                const influenceRadius = 150;
+                // ZNACZNIE MNIEJSZY wpływ - tylko blisko obiektu (3x rozmiar kształtu)
+                const influenceRadius = shapeRadius * 3;
 
-                if (dist < influenceRadius) {
-                    const influence = (influenceRadius - dist) / influenceRadius;
+                if (dist < influenceRadius && dist > 0.1) {
+                    // Normalizuj odległość (0 = przy kształcie, 1 = na krawędzi wpływu)
+                    const normalizedDist = dist / influenceRadius;
+                    const influence = 1 - normalizedDist;
+
+                    // Wektor od powierzchni kształtu
                     const angle = Math.atan2(dy, dx);
 
-                    // Sprawdź czy punkt jest przed czy za obiektem
-                    const isBehind = px > shapeCenterX;
+                    // Sprawdź czy punkt jest przed czy za obiektem względem przepływu
+                    const relativeX = px - shapeCenterX;
+                    const isBehind = relativeX > 0;
+                    const isInFront = relativeX < -shapeRadius * 0.5;
 
-                    if (isBehind) {
-                        // ZA OBIEKTEM - zawirowania i niskie ciśnienie
-                        const wakeStrength = influence * 2;
-
-                        // Dodaj rotację (zawirowania)
-                        const perpAngle = angle + Math.PI / 2;
+                    if (isInFront) {
+                        // PRZED OBIEKTEM - słabe rozpraszanie, kompresja przy boach
                         const distFromCenter = Math.abs(py - shapeCenterY);
-                        const rotationDir = (py > shapeCenterY) ? -1 : 1;
 
-                        this.flowField[y][x].vx = this.windSpeed * (1 - influence * 0.7);
-                        this.flowField[y][x].vy += Math.sin(perpAngle) * wakeStrength * this.windSpeed * rotationDir;
-                        this.flowField[y][x].vorticity = influence * rotationDir;
+                        if (distFromCenter < shapeRadius * 1.2) {
+                            // Kompresja boczna - flow musi ominąć
+                            const sideForce = influence * influence; // quadratic falloff
+                            this.flowField[y][x].vy = Math.sin(angle) * sideForce * this.windSpeed * 1.5;
+                            this.flowField[y][x].vx = this.windSpeed * (1 - sideForce * 0.2);
 
-                        // Niskie ciśnienie za obiektem (efekt ssania)
-                        this.flowField[y][x].pressure = 0.5 + influence * 0.3;
+                            // Bernoulli: wyższa prędkość = niższe ciśnienie
+                            const speed = Math.sqrt(
+                                this.flowField[y][x].vx ** 2 +
+                                this.flowField[y][x].vy ** 2
+                            );
+                            this.flowField[y][x].pressure = 1.0 - (speed - this.windSpeed) / this.windSpeed * 0.4;
+                        }
+                    } else if (isBehind) {
+                        // ZA OBIEKTEM - wake recovery, stopniowe zbieganie
+                        const wakeStrength = influence * Math.exp(-normalizedDist * 2);
+                        const distFromCenterY = py - shapeCenterY;
+
+                        // Strumienie zbiegają się do centrum (pressure recovery)
+                        const convergenceForce = -distFromCenterY / (shapeRadius * 3) * wakeStrength;
+
+                        this.flowField[y][x].vx = this.windSpeed * (0.6 + normalizedDist * 0.4); // slower in wake
+                        this.flowField[y][x].vy = convergenceForce * this.windSpeed * 2;
+
+                        // Niskie ciśnienie w wake (vacuum effect)
+                        this.flowField[y][x].pressure = 0.6 + normalizedDist * 0.3;
                     } else {
-                        // PRZED OBIEKTEM - opływ
-                        const deflection = influence * 2.5;
+                        // PRZY BOKACH - maksymalna prędkość (squeeze effect)
+                        const sideStrength = influence * (1 - Math.abs(relativeX) / shapeRadius);
 
-                        // Omijanie przeszkody
-                        this.flowField[y][x].vx = this.windSpeed * (1 - influence * 0.3);
-                        this.flowField[y][x].vy = Math.sin(angle) * deflection * this.windSpeed;
+                        this.flowField[y][x].vx = this.windSpeed * (1 + sideStrength * 0.3);
+                        this.flowField[y][x].vy = Math.sin(angle) * sideStrength * this.windSpeed * 2;
 
-                        // Wysokie ciśnienie przed obiektem
+                        // Najniższe ciśnienie przy bokach
                         const speed = Math.sqrt(
                             this.flowField[y][x].vx ** 2 +
                             this.flowField[y][x].vy ** 2
                         );
-                        this.flowField[y][x].pressure = 1.0 + (this.windSpeed - speed) / this.windSpeed * 0.5;
+                        this.flowField[y][x].pressure = 1.0 - (speed - this.windSpeed) / this.windSpeed * 0.6;
                     }
                 }
             }
         }
     }
 
-    // Smoothing pola przepływu dla płynniejszego przejścia
+    // Smoothing pola przepływu - multi-pass dla ciągłości
     smoothFlowField() {
         const cols = Math.ceil(this.canvas.width / this.gridSize);
         const rows = Math.ceil(this.canvas.height / this.gridSize);
@@ -229,94 +247,46 @@ class WindTunnel {
 
         for (let y = 1; y < rows - 1; y++) {
             for (let x = 1; x < cols - 1; x++) {
-                // Pomiń wnętrze kształtu
+                // Pomiń wnętrze kształtu (solid boundary)
                 if (this.flowField[y][x].vx === 0 && this.flowField[y][x].vy === 0) {
                     continue;
                 }
 
-                // Uśrednij z sąsiadami (słabe smoothing)
-                let avgVx = this.flowField[y][x].vx;
-                let avgVy = this.flowField[y][x].vy;
-                let count = 1;
+                // Weighted average z sąsiadami (większa waga dla upstream)
+                let sumVx = this.flowField[y][x].vx * 2; // własna waga
+                let sumVy = this.flowField[y][x].vy * 2;
+                let weight = 2;
 
                 const neighbors = [
-                    [x-1, y], [x+1, y], [x, y-1], [x, y+1]
+                    [x-1, y, 1.2],   // upstream - większa waga
+                    [x+1, y, 0.8],   // downstream - mniejsza waga
+                    [x, y-1, 1.0],   // vertical
+                    [x, y+1, 1.0]
                 ];
 
-                for (let [nx, ny] of neighbors) {
+                for (let [nx, ny, w] of neighbors) {
                     if (this.flowField[ny] && this.flowField[ny][nx]) {
-                        // Pomiń wnętrze kształtu
-                        if (this.flowField[ny][nx].vx !== 0 || this.flowField[ny][nx].vy !== 0) {
-                            avgVx += this.flowField[ny][nx].vx;
-                            avgVy += this.flowField[ny][nx].vy;
-                            count++;
+                        const neighbor = this.flowField[ny][nx];
+                        // Pomiń solid boundaries
+                        if (neighbor.vx !== 0 || neighbor.vy !== 0) {
+                            sumVx += neighbor.vx * w;
+                            sumVy += neighbor.vy * w;
+                            weight += w;
                         }
                     }
                 }
 
-                // Słabe smoothing (20%)
-                newField[y][x].vx = this.flowField[y][x].vx * 0.8 + (avgVx / count) * 0.2;
-                newField[y][x].vy = this.flowField[y][x].vy * 0.8 + (avgVy / count) * 0.2;
+                // Słabsze smoothing (30%) aby zachować szczegóły
+                const smoothingFactor = 0.3;
+                const avgVx = sumVx / weight;
+                const avgVy = sumVy / weight;
+
+                newField[y][x].vx = this.flowField[y][x].vx * (1 - smoothingFactor) + avgVx * smoothingFactor;
+                newField[y][x].vy = this.flowField[y][x].vy * (1 - smoothingFactor) + avgVy * smoothingFactor;
             }
         }
 
         this.flowField = newField;
-    }
-
-    applyVortices() {
-        const cols = Math.ceil(this.canvas.width / this.gridSize);
-        const rows = Math.ceil(this.canvas.height / this.gridSize);
-
-        // Aktualizuj zawirowania
-        for (let i = this.vortices.length - 1; i >= 0; i--) {
-            const vortex = this.vortices[i];
-
-            // Przesuń zawirowanie z przepływem
-            vortex.x += this.windSpeed * 0.3;
-            vortex.strength *= 0.98; // Zanik
-            vortex.age++;
-
-            // Usuń stare lub słabe zawirowania
-            if (vortex.strength < 0.1 || vortex.x > this.canvas.width + 100 || vortex.age > 300) {
-                this.vortices.splice(i, 1);
-                continue;
-            }
-
-            // Wpływ na pole przepływu
-            for (let y = 0; y < rows; y++) {
-                for (let x = 0; x < cols; x++) {
-                    const px = x * this.gridSize;
-                    const py = y * this.gridSize;
-
-                    const dx = px - vortex.x;
-                    const dy = py - vortex.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist < vortex.radius && dist > 1) {
-                        const influence = (vortex.radius - dist) / vortex.radius;
-                        const angle = Math.atan2(dy, dx);
-                        const perpAngle = angle + Math.PI / 2;
-
-                        // Dodaj rotacyjny przepływ
-                        this.flowField[y][x].vx += Math.cos(perpAngle) * vortex.strength * influence;
-                        this.flowField[y][x].vy += Math.sin(perpAngle) * vortex.strength * influence;
-                    }
-                }
-            }
-        }
-    }
-
-    // Generuj zawirowania za obiektem
-    generateVortex(x, y, strength, direction) {
-        if (this.vortices.length < this.maxVortices) {
-            this.vortices.push({
-                x: x,
-                y: y,
-                strength: strength * direction,
-                radius: 40,
-                age: 0
-            });
-        }
     }
 
     getShapeBounds() {
@@ -401,14 +371,10 @@ class WindTunnel {
         // Dodaj nowe cząsteczki do strumieni
         for (let stream of this.particleStreams) {
             if (stream.particles.length === 0 ||
-                stream.particles[stream.particles.length - 1].x > 25) {
+                stream.particles[stream.particles.length - 1].x > 20) {
                 stream.particles.push(this.createParticle(stream.y));
             }
         }
-
-        // Licznik do generowania zawirowan
-        let vortexTimer = 0;
-        const shapeBounds = this.shape ? this.getShapeBounds() : null;
 
         // Aktualizuj wszystkie cząsteczki
         for (let stream of this.particleStreams) {
@@ -448,13 +414,13 @@ class WindTunnel {
                         f11.vy * fx * fy;
                 }
 
-                // Płynna interpolacja prędkości (mniejsza sztywność)
-                const smoothing = 0.15;
+                // MOCNIEJSZA interpolacja - cząsteczki ściśle podążają za flow field
+                const smoothing = 0.25;
                 particle.vx = particle.vx * (1 - smoothing) + flowVx * smoothing;
                 particle.vy = particle.vy * (1 - smoothing) + flowVy * smoothing;
 
                 // Zapisz pozycję do śladu
-                if (particle.age % 2 === 0) { // Co drugą klatkę dla wydajności
+                if (particle.age % 1 === 0) {
                     particle.trail.push({ x: particle.x, y: particle.y });
                     if (particle.trail.length > particle.maxTrailLength) {
                         particle.trail.shift();
@@ -465,34 +431,25 @@ class WindTunnel {
                 particle.x += particle.vx * 0.5;
                 particle.y += particle.vy * 0.5;
 
-                // Kolizja z kształtem - ULEPSZONA
+                // Kolizja z kształtem - reflect properly
                 if (this.shape && this.isPointInShape(particle.x, particle.y)) {
                     const closest = this.getClosestPointOnShape(particle.x, particle.y);
                     const dx = particle.x - closest.x;
                     const dy = particle.y - closest.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
-                    if (dist > 0.5) {
+                    if (dist > 0.1) {
                         const nx = dx / dist;
                         const ny = dy / dist;
 
-                        // Odbicie z tłumieniem
+                        // Reflect velocity
                         const dot = particle.vx * nx + particle.vy * ny;
-                        particle.vx -= 1.5 * dot * nx;
-                        particle.vy -= 1.5 * dot * ny;
+                        particle.vx -= 2 * dot * nx * 0.8; // damping
+                        particle.vy -= 2 * dot * ny * 0.8;
 
-                        // Wypchni cząsteczkę poza kształt
-                        particle.x = closest.x + nx * 3;
-                        particle.y = closest.y + ny * 3;
-
-                        // Generuj zawirowania przy kolizji (rzadko)
-                        if (Math.random() < 0.05 && shapeBounds) {
-                            const isBehind = particle.x > (shapeBounds.minX + shapeBounds.maxX) / 2;
-                            if (isBehind) {
-                                const dir = particle.y > closest.y ? 1 : -1;
-                                this.generateVortex(closest.x + 10, closest.y, 3, dir);
-                            }
-                        }
+                        // Push out of shape
+                        particle.x = closest.x + nx * 2;
+                        particle.y = closest.y + ny * 2;
                     }
                 }
 
@@ -503,14 +460,6 @@ class WindTunnel {
                     stream.particles.splice(i, 1);
                 }
             }
-        }
-
-        // Generuj zawirowania za obiektem (okresowo)
-        if (this.shape && shapeBounds && Math.random() < 0.03) {
-            const behindX = shapeBounds.maxX + 20;
-            const centerY = (shapeBounds.minY + shapeBounds.maxY) / 2;
-            const offsetY = (Math.random() - 0.5) * (shapeBounds.maxY - shapeBounds.minY);
-            this.generateVortex(behindX, centerY + offsetY, 4, Math.random() < 0.5 ? 1 : -1);
         }
     }
 
@@ -586,9 +535,6 @@ class WindTunnel {
         // Cząsteczki i ich ślady
         this.drawParticles();
 
-        // Zawirowania (opcjonalnie - wizualizacja dla debugowania)
-        // this.drawVortices();
-
         // Kształt
         if (this.shape && !this.isDrawingMode) {
             this.drawShape(this.shape);
@@ -630,12 +576,12 @@ class WindTunnel {
                 const flow = this.flowField[y][x];
 
                 const magnitude = Math.sqrt(flow.vx * flow.vx + flow.vy * flow.vy);
-                const alpha = Math.min(magnitude / this.windSpeed, 1) * 0.5;
+                const alpha = Math.min(magnitude / this.windSpeed, 1.5) * 0.5;
 
                 this.ctx.strokeStyle = `rgba(79, 172, 254, ${alpha})`;
-                this.ctx.lineWidth = 2;
+                this.ctx.lineWidth = 1.5;
 
-                const scale = 2;
+                const scale = 1.5;
                 this.ctx.beginPath();
                 this.ctx.moveTo(px, py);
                 this.ctx.lineTo(px + flow.vx * scale, py + flow.vy * scale);
@@ -643,7 +589,7 @@ class WindTunnel {
 
                 // Strzałka
                 const angle = Math.atan2(flow.vy, flow.vx);
-                const arrowSize = 4;
+                const arrowSize = 3;
                 this.ctx.beginPath();
                 this.ctx.moveTo(px + flow.vx * scale, py + flow.vy * scale);
                 this.ctx.lineTo(
@@ -672,10 +618,10 @@ class WindTunnel {
                 let color;
                 if (pressure < 1.0) {
                     const t = pressure;
-                    color = `rgba(79, 172, 254, ${(1 - t) * 0.2})`;
+                    color = `rgba(79, 172, 254, ${(1 - t) * 0.25})`;
                 } else {
-                    const t = Math.min((pressure - 1.0) / 1.0, 1);
-                    color = `rgba(245, 87, 108, ${t * 0.25})`;
+                    const t = Math.min((pressure - 1.0) / 0.5, 1);
+                    color = `rgba(245, 87, 108, ${t * 0.3})`;
                 }
 
                 this.ctx.fillStyle = color;
@@ -689,18 +635,6 @@ class WindTunnel {
         }
     }
 
-    drawVortices() {
-        // Wizualizacja zawirowan (debug)
-        for (let vortex of this.vortices) {
-            const alpha = Math.abs(vortex.strength) / 5;
-            this.ctx.strokeStyle = `rgba(255, 100, 200, ${alpha})`;
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.arc(vortex.x, vortex.y, vortex.radius, 0, Math.PI * 2);
-            this.ctx.stroke();
-        }
-    }
-
     drawParticles() {
         for (let stream of this.particleStreams) {
             for (let particle of stream.particles) {
@@ -710,11 +644,11 @@ class WindTunnel {
                         particle.trail[0].x, particle.trail[0].y,
                         particle.x, particle.y
                     );
-                    gradient.addColorStop(0, 'rgba(0, 242, 254, 0.1)');
-                    gradient.addColorStop(1, 'rgba(0, 242, 254, 0.5)');
+                    gradient.addColorStop(0, 'rgba(0, 242, 254, 0.05)');
+                    gradient.addColorStop(1, 'rgba(0, 242, 254, 0.6)');
 
                     this.ctx.strokeStyle = gradient;
-                    this.ctx.lineWidth = 1.5;
+                    this.ctx.lineWidth = 2;
                     this.ctx.beginPath();
                     this.ctx.moveTo(particle.trail[0].x, particle.trail[0].y);
 
@@ -726,17 +660,17 @@ class WindTunnel {
 
                 // Rysuj cząsteczkę
                 const speed = Math.sqrt(particle.vx ** 2 + particle.vy ** 2);
-                const hue = 180 + (speed / this.windSpeed) * 40;
+                const hue = 180 + (speed / this.windSpeed) * 50;
 
-                this.ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.9)`;
+                this.ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.95)`;
                 this.ctx.beginPath();
                 this.ctx.arc(particle.x, particle.y, 2.5, 0, Math.PI * 2);
                 this.ctx.fill();
 
                 // Poświata
-                this.ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.2)`;
+                this.ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.15)`;
                 this.ctx.beginPath();
-                this.ctx.arc(particle.x, particle.y, 5, 0, Math.PI * 2);
+                this.ctx.arc(particle.x, particle.y, 6, 0, Math.PI * 2);
                 this.ctx.fill();
             }
         }
@@ -746,7 +680,7 @@ class WindTunnel {
         if (shape.points.length < 2) return;
 
         // Wypełnienie
-        this.ctx.fillStyle = 'rgba(102, 126, 234, 0.7)';
+        this.ctx.fillStyle = 'rgba(102, 126, 234, 0.8)';
         this.ctx.strokeStyle = '#4facfe';
         this.ctx.lineWidth = 3;
 
@@ -759,7 +693,7 @@ class WindTunnel {
         this.ctx.fill();
         this.ctx.stroke();
 
-        // Rysuj punkty kontrolne tylko gdy nie symulujemy
+        // Rysuj punkty kontrolne tylko gdy w trybie pauzy lub przeciągania
         if (this.isPaused || this.isDragging) {
             for (let point of shape.points) {
                 this.ctx.fillStyle = '#00f2fe';
@@ -1162,7 +1096,6 @@ class WindTunnel {
 
     reset() {
         this.initParticleStreams();
-        this.vortices = [];
         this.shape = null;
         this.isDrawingMode = false;
         this.drawingPoints = [];
@@ -1170,7 +1103,6 @@ class WindTunnel {
 
     clearShape() {
         this.shape = null;
-        this.vortices = [];
     }
 }
 
