@@ -382,7 +382,7 @@ class WindTunnel {
                 const particle = stream.particles[i];
                 particle.age++;
 
-                // Pobierz przepływ z siatki (interpolacja biliniarna)
+                // Pobierz przepływ z siatki (interpolacja biliniowa)
                 const gridX = particle.x / this.gridSize;
                 const gridY = particle.y / this.gridSize;
                 const gx = Math.floor(gridX);
@@ -427,40 +427,30 @@ class WindTunnel {
                     }
                 }
 
-                // PREDICTIVE COLLISION - sprawdź PRZYSZŁĄ pozycję przed jej zastosowaniem
-                const newX = particle.x + particle.vx * 0.5;
-                const newY = particle.y + particle.vy * 0.5;
+                // Aktualizuj pozycję
+                particle.x += particle.vx * 0.5;
+                particle.y += particle.vy * 0.5;
 
-                // Jeśli nowa pozycja byłaby WEWNĄTRZ kształtu - ODBIJ
-                if (this.shape && this.isPointInShape(newX, newY)) {
-                    // Znajdź najbliższy punkt na krawędzi kształtu
-                    const closest = this.getClosestPointOnShape(newX, newY);
-                    const dx = newX - closest.x;
-                    const dy = newY - closest.y;
+                // Kolizja z kształtem - reflect properly
+                if (this.shape && this.isPointInShape(particle.x, particle.y)) {
+                    const closest = this.getClosestPointOnShape(particle.x, particle.y);
+                    const dx = particle.x - closest.x;
+                    const dy = particle.y - closest.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (dist > 0.1) {
-                        // Normalna do powierzchni (kierunek od kształtu)
                         const nx = dx / dist;
                         const ny = dy / dist;
 
-                        // Odbij wektor prędkości
+                        // Reflect velocity
                         const dot = particle.vx * nx + particle.vy * ny;
-                        particle.vx -= 2 * dot * nx * 0.7; // damping 0.7
-                        particle.vy -= 2 * dot * ny * 0.7;
+                        particle.vx -= 2 * dot * nx * 0.8; // damping
+                        particle.vy -= 2 * dot * ny * 0.8;
 
-                        // Ustaw cząsteczkę PRZY krawędzi (nie ruszaj w stronę kształtu)
-                        particle.x = closest.x + nx * 3;
-                        particle.y = closest.y + ny * 3;
-                    } else {
-                        // Bardzo blisko - po prostu odbij
-                        particle.vx = -particle.vx * 0.5;
-                        particle.vy = -particle.vy * 0.5;
+                        // Push out of shape
+                        particle.x = closest.x + nx * 2;
+                        particle.y = closest.y + ny * 2;
                     }
-                } else {
-                    // Brak kolizji - normalna aktualizacja pozycji
-                    particle.x = newX;
-                    particle.y = newY;
                 }
 
                 // Usuń cząsteczki poza ekranem
