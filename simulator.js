@@ -173,8 +173,8 @@ class WindTunnel {
                 const dy = py - closestPoint.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
-                // ZNACZNIE MNIEJSZY wpływ - tylko blisko obiektu (3x rozmiar kształtu)
-                const influenceRadius = shapeRadius * 3;
+                // ZNACZNIE MNIEJSZY wpływ - tylko blisko obiektu (2x rozmiar kształtu)
+                const influenceRadius = shapeRadius * 2;
 
                 if (dist < influenceRadius && dist > 0.1) {
                     // Normalizuj odległość (0 = przy kształcie, 1 = na krawędzi wpływu)
@@ -190,14 +190,14 @@ class WindTunnel {
                     const isInFront = relativeX < -shapeRadius * 0.5;
 
                     if (isInFront) {
-                        // PRZED OBIEKTEM - słabe rozpraszanie, kompresja przy boach
+                        // PRZED OBIEKTEM - słabe rozpraszanie, kompresja przy bokach
                         const distFromCenter = Math.abs(py - shapeCenterY);
 
                         if (distFromCenter < shapeRadius * 1.2) {
-                            // Kompresja boczna - flow musi ominąć
+                            // Kompresja boczna - flow musi ominąć (słabo)
                             const sideForce = influence * influence; // quadratic falloff
-                            this.flowField[y][x].vy = Math.sin(angle) * sideForce * this.windSpeed * 1.5;
-                            this.flowField[y][x].vx = this.windSpeed * (1 - sideForce * 0.2);
+                            this.flowField[y][x].vy = Math.sin(angle) * sideForce * this.windSpeed * 0.8;
+                            this.flowField[y][x].vx = this.windSpeed * (1 - sideForce * 0.15);
 
                             // Bernoulli: wyższa prędkość = niższe ciśnienie
                             const speed = Math.sqrt(
@@ -220,11 +220,11 @@ class WindTunnel {
                         // Niskie ciśnienie w wake (vacuum effect)
                         this.flowField[y][x].pressure = 0.6 + normalizedDist * 0.3;
                     } else {
-                        // PRZY BOKACH - maksymalna prędkość (squeeze effect)
+                        // PRZY BOKACH - squeeze effect (umiarkowany)
                         const sideStrength = influence * (1 - Math.abs(relativeX) / shapeRadius);
 
-                        this.flowField[y][x].vx = this.windSpeed * (1 + sideStrength * 0.3);
-                        this.flowField[y][x].vy = Math.sin(angle) * sideStrength * this.windSpeed * 2;
+                        this.flowField[y][x].vx = this.windSpeed * (1 + sideStrength * 0.25);
+                        this.flowField[y][x].vy = Math.sin(angle) * sideStrength * this.windSpeed * 1.2;
 
                         // Najniższe ciśnienie przy bokach
                         const speed = Math.sqrt(
