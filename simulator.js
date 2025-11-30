@@ -431,26 +431,10 @@ class WindTunnel {
                 particle.x += particle.vx * 0.5;
                 particle.y += particle.vy * 0.5;
 
-                // Kolizja z kształtem - reflect properly
+                // Kolizja z kształtem - usuń cząsteczkę która wpadła
                 if (this.shape && this.isPointInShape(particle.x, particle.y)) {
-                    const closest = this.getClosestPointOnShape(particle.x, particle.y);
-                    const dx = particle.x - closest.x;
-                    const dy = particle.y - closest.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-
-                    if (dist > 0.1) {
-                        const nx = dx / dist;
-                        const ny = dy / dist;
-
-                        // Reflect velocity
-                        const dot = particle.vx * nx + particle.vy * ny;
-                        particle.vx -= 2 * dot * nx * 0.8; // damping
-                        particle.vy -= 2 * dot * ny * 0.8;
-
-                        // Push out of shape
-                        particle.x = closest.x + nx * 2;
-                        particle.y = closest.y + ny * 2;
-                    }
+                    stream.particles.splice(i, 1);
+                    continue;
                 }
 
                 // Usuń cząsteczki poza ekranem
