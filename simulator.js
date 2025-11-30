@@ -427,15 +427,15 @@ class WindTunnel {
                     }
                 }
 
-                // Aktualizuj pozycję
-                particle.x += particle.vx * 0.5;
-                particle.y += particle.vy * 0.5;
+                // Sprawdź potencjalną nową pozycję
+                const newX = particle.x + particle.vx * 0.5;
+                const newY = particle.y + particle.vy * 0.5;
 
-                // Kolizja z kształtem - reflect properly
-                if (this.shape && this.isPointInShape(particle.x, particle.y)) {
-                    const closest = this.getClosestPointOnShape(particle.x, particle.y);
-                    const dx = particle.x - closest.x;
-                    const dy = particle.y - closest.y;
+                // Kolizja z kształtem - zapobiegnij wejściu w kształt
+                if (this.shape && this.isPointInShape(newX, newY)) {
+                    const closest = this.getClosestPointOnShape(newX, newY);
+                    const dx = newX - closest.x;
+                    const dy = newY - closest.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (dist > 0.1) {
@@ -447,10 +447,18 @@ class WindTunnel {
                         particle.vx -= 2 * dot * nx * 0.8; // damping
                         particle.vy -= 2 * dot * ny * 0.8;
 
-                        // Push out of shape
-                        particle.x = closest.x + nx * 2;
-                        particle.y = closest.y + ny * 2;
+                        // Ustaw pozycję na krawędzi kształtu + margines
+                        particle.x = closest.x + nx * 8;
+                        particle.y = closest.y + ny * 8;
+                    } else {
+                        // Gdyby dist było bardzo małe, po prostu nie wpuszczaj cząsteczki
+                        particle.vx = -particle.vx * 0.5;
+                        particle.vy = -particle.vy * 0.5;
                     }
+                } else {
+                    // Brak kolizji - normalnie aktualizuj pozycję
+                    particle.x = newX;
+                    particle.y = newY;
                 }
 
                 // Usuń cząsteczki poza ekranem
