@@ -41,6 +41,11 @@ class WindTunnel {
         this.gridSize = 15;
         this.flowField = [];
 
+        // System wirów (turbulencje za obiektem)
+        this.vortices = [];
+        this.vortexTimer = 0;
+        this.maxVortices = 30;
+
         // Metryki
         this.dragForce = 0;
         this.liftForce = 0;
