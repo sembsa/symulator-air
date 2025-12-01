@@ -139,6 +139,13 @@ class WindTunnel {
             this.calculateFlowAroundShape();
         }
 
+        // Generuj i aktualizuj wiry (turbulencje za obiektem)
+        if (this.shape && !this.isDrawingMode && !this.isPaused) {
+            this.generateVortices();
+            this.updateVortices();
+            this.applyVortexInfluence();
+        }
+
         // Multi-pass smoothing dla płynności
         for (let pass = 0; pass < 2; pass++) {
             this.smoothFlowField();
@@ -292,6 +299,98 @@ class WindTunnel {
         }
 
         this.flowField = newField;
+    }
+
+    // System wirów - turbulencje za obiektem
+    generateVortices() {
+        if (!this.shape || this.shape.points.length < 3) return;
+
+        const shapeBounds = this.getShapeBounds();
+        const shapeCenterX = (shapeBounds.minX + shapeBounds.maxX) / 2;
+        const shapeCenterY = (shapeBounds.minY + shapeBounds.maxY) / 2;
+        const shapeRadius = Math.max(
+            shapeBounds.maxX - shapeBounds.minX,
+            shapeBounds.maxY - shapeBounds.minY
+        ) / 2;
+
+        // Generuj wiry co jakiś czas (Karman vortex street)
+        this.vortexTimer++;
+        const vortexInterval = Math.max(5, 20 - this.windSpeed); // szybciej przy większej prędkości
+
+        if (this.vortexTimer >= vortexInterval && this.vortices.length < this.maxVortices) {
+            this.vortexTimer = 0;
+
+            // Wiry powstają za obiektem, na przemian góra/dół
+            const side = this.vortices.length % 2 === 0 ? 1 : -1;
+            const vortex = {
+                x: shapeCenterX + shapeRadius * 1.5, // za obiektem
+                y: shapeCenterY + side * shapeRadius * 0.7, // naprzemiennie góra/dół
+                strength: this.windSpeed * 0.3 * side, // siła wirowania (+ lub -)
+                radius: shapeRadius * 0.8,
+                age: 0,
+                maxAge: 180 // 3 sekundy przy 60fps
+            };
+            this.vortices.push(vortex);
+        }
+    }
+
+    updateVortices() {
+        // Aktualizuj pozycje i wiek wirów
+        for (let i = this.vortices.length - 1; i >= 0; i--) {
+            const vortex = this.vortices[i];
+
+            // Wir przesuwa się z wiatrem i rozprasza
+            vortex.x += this.windSpeed * 0.5;
+            vortex.age++;
+
+            // Wir się rozszerza i słabnie z czasem
+            const ageFactor = vortex.age / vortex.maxAge;
+            vortex.radius += 0.3;
+            vortex.strength *= 0.99; // zanik
+
+            // Usuń stare wiry
+            if (vortex.age > vortex.maxAge || vortex.x > this.canvas.width + 100) {
+                this.vortices.splice(i, 1);
+            }
+        }
+    }
+
+    applyVortexInfluence() {
+        const cols = Math.ceil(this.canvas.width / this.gridSize);
+        const rows = Math.ceil(this.canvas.height / this.gridSize);
+
+        // Każdy wir wpływa na flow field
+        for (let vortex of this.vortices) {
+            const vortexInfluenceRadius = vortex.radius * 2;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const px = x * this.gridSize;
+                    const py = y * this.gridSize;
+
+                    const dx = px - vortex.x;
+                    const dy = py - vortex.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < vortexInfluenceRadius && dist > 1) {
+                        // Wpływ wirowy - prędkość tangencjalna
+                        const influence = 1 - (dist / vortexInfluenceRadius);
+                        const tangentStrength = vortex.strength * influence / dist;
+
+                        // Prędkość tangencjalna (prostopadła do promienia)
+                        const vortexVx = -dy * tangentStrength;
+                        const vortexVy = dx * tangentStrength;
+
+                        // Dodaj do flow field
+                        this.flowField[y][x].vx += vortexVx;
+                        this.flowField[y][x].vy += vortexVy;
+
+                        // Turbulencje obniżają ciśnienie
+                        this.flowField[y][x].pressure -= influence * 0.15;
+                    }
+                }
+            }
+        }
     }
 
     getShapeBounds() {
@@ -587,6 +686,9 @@ class WindTunnel {
         // Cząsteczki i ich ślady
         this.drawParticles();
 
+        // Wiry (turbulencje)
+        this.drawVortices();
+
         // Kształt
         if (this.shape && !this.isDrawingMode) {
             this.drawShape(this.shape);
@@ -724,6 +826,31 @@ class WindTunnel {
                 this.ctx.beginPath();
                 this.ctx.arc(particle.x, particle.y, 6, 0, Math.PI * 2);
                 this.ctx.fill();
+            }
+        }
+    }
+
+    drawVortices() {
+        // Wizualizacja wirów (opcjonalna - subtelna)
+        for (let vortex of this.vortices) {
+            const ageFactor = vortex.age / vortex.maxAge;
+            const alpha = (1 - ageFactor) * 0.3;
+
+            // Kierunek wirowania
+            const sign = Math.sign(vortex.strength);
+            const color = sign > 0 ? '255, 100, 100' : '100, 100, 255';
+
+            // Rysuj spiralę wirową
+            this.ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+            this.ctx.lineWidth = 2;
+
+            for (let i = 0; i < 3; i++) {
+                const r = vortex.radius * (0.3 + i * 0.3);
+                const offset = (vortex.age * sign * 0.1) % (Math.PI * 2);
+
+                this.ctx.beginPath();
+                this.ctx.arc(vortex.x, vortex.y, r, offset, offset + Math.PI * 1.5);
+                this.ctx.stroke();
             }
         }
     }
